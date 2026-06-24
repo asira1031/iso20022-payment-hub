@@ -33,23 +33,37 @@ async function getZenusToken() {
   return data.access_token;
 }
 
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
-    const token = await getZenusToken();
-    const { searchParams } = new URL(req.url);
+    const body = await req.json();
 
-    const legalPersonId = searchParams.get("personId") || "ID-30629";
-    const masterAccountId = searchParams.get("masterAccountId") || "ID-8630";
+    const personId = body.personId;
+    const masterAccountId = body.masterAccountId;
+    const currencyCode = body.currencyCode || "USD";
+    const accountClassCode = body.accountClassCode || "CORPORATE_DDA";
+    const accountName = body.accountName || "TDI USD Virtual Account";
+
+    if (!personId || !masterAccountId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "personId and masterAccountId are required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const token = await getZenusToken();
 
     const payload = {
-      currencyCode: "USD",
-      accountClassCode: "CORPORATE_DDA",
-      accountName: "Asira USD Virtual Account",
+      currencyCode,
+      accountClassCode,
+      accountName,
       masterAccountId,
     };
 
     const response = await fetch(
-      `https://api.dev.zenus.io/api/v4/persons/${legalPersonId}/accounts`,
+      `https://api.dev.zenus.io/api/v4/persons/${personId}/accounts`,
       {
         method: "POST",
         headers: {
@@ -70,13 +84,14 @@ export async function GET(req: Request) {
       await createAuditLog({
         module: "ZENUS",
         action: "ZENUS_VIRTUAL_ACCOUNT_CREATED",
-        reference_id: accountId || legalPersonId,
+        reference_id: accountId || personId,
         details: {
-          legal_person_id: legalPersonId,
+          person_id: personId,
           master_account_id: masterAccountId,
           account_id: accountId,
-          account_class: "CORPORATE_DDA",
-          currency: "USD",
+          account_class: accountClassCode,
+          currency: currencyCode,
+          account_name: accountName,
         },
       });
     }
@@ -84,9 +99,10 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: response.ok,
       status: response.status,
-      legalPersonId,
+      personId,
       masterAccountId,
       accountId,
+      payload,
       zenus: data,
     });
   } catch (error: any) {
